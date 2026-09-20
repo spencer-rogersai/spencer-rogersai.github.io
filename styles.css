@@ -170,7 +170,7 @@ main.shell {
 
 .kicker {
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--accent);
   margin: 0 0 12px;
