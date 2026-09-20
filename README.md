@@ -1,1 +1,0 @@
-# spencer-rogersai.github.io
