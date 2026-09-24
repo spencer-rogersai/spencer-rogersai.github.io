@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>California Senior Care Market Tools</title>
+<meta name="description" content="Three browser tools for California senior care markets: competitor mapping, referral sourcing, and demand analysis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/launcher.css">
+</head>
+<body>
+
+<a class="skip" href="#tools">Skip to the tools</a>
+
+<header class="masthead">
+  <div class="shell">
+    <p class="env">Staging build, September 24 2026</p>
+    <h1>California Senior<br>Care Market Tools</h1>
+    <p class="lede">Three browser tools built on published state and federal data. Nothing installs, and the files you load stay on your computer.</p>
+
+    <dl class="figures">
+      <div><dt>Tools</dt><dd>3</dd></div>
+      <div><dt>Providers mapped</dt><dd>27,224</dd></div>
+      <div><dt>Counties and ZIP areas</dt><dd>1,820</dd></div>
+      <div><dt>Server required</dt><dd>None</dd></div>
+    </dl>
+  </div>
+</header>
+
+<main class="shell" id="tools">
+  <section aria-label="Tools">
+    <div class="grid">
+
+      <article class="card" data-accent="plum">
+        <p class="kicker">Competition</p>
+        <h2><a class="card-title" href="competitor-map.html">Competitor Map</a></h2>
+        <p class="card-body">Every licensed residential care facility and home care agency in California, colored by citation history, with resident demand from the Census on the same map. Switch between the two markets without leaving the page.</p>
+        <table class="spec">
+          <caption>What it covers</caption>
+          <tbody>
+            <tr><th scope="row">Residential care</th><td>9,422 facilities</td></tr>
+            <tr><th scope="row">Home care</th><td>2,762 agencies</td></tr>
+            <tr><th scope="row">Source</th><td>CDSS Community Care Licensing</td></tr>
+            <tr><th scope="row">Updates</th><td>Downloads the current file itself</td></tr>
+          </tbody>
+        </table>
+        <ul class="actions">
+          <li><a class="primary" href="competitor-map.html">Open</a></li>
+          <li><a href="docs/rcfe-map-manual.docx">Manual</a></li>
+        </ul>
+      </article>
+
+      <article class="card" data-accent="green">
+        <p class="kicker">Referrals</p>
+        <h2><a class="card-title" href="referral-finder.html">Referral Finder</a></h2>
+        <p class="card-body">The full CDPH health facility roster at published coordinates, grouped into six categories. Filters on contact completeness, so a lead list is people you can actually reach rather than names you cannot.</p>
+        <table class="spec">
+          <caption>What it covers</caption>
+          <tbody>
+            <tr><th scope="row">Facilities</th><td>15,040</td></tr>
+            <tr><th scope="row">With a phone number</th><td>13,498</td></tr>
+            <tr><th scope="row">Source</th><td>CDPH licensing and certification</td></tr>
+            <tr><th scope="row">Updates</th><td>Downloads the current file itself</td></tr>
+          </tbody>
+        </table>
+        <ul class="actions">
+          <li><a class="primary" href="referral-finder.html">Open</a></li>
+          <li><a href="docs/health-facility-lead-map-manual.docx">Manual</a></li>
+        </ul>
+      </article>
+
+      <article class="card" data-accent="indigo">
+        <p class="kicker">Market analysis</p>
+        <h2><a class="card-title" href="market-explorer.html">Market Explorer</a></h2>
+        <p class="card-body">Who needs care, who can pay for it, and who is available to staff it. Three tabs over Census and BLS data, by county and ZIP code. Needs no file from you: it opens ready to use.</p>
+        <table class="spec">
+          <caption>What it covers</caption>
+          <tbody>
+            <tr><th scope="row">Demand</th><td>Age, living alone, disability</td></tr>
+            <tr><th scope="row">Affordability</th><td>Income, home equity, adult children</td></tr>
+            <tr><th scope="row">Workforce</th><td>Care jobs, wages by occupation</td></tr>
+            <tr><th scope="row">Sources</th><td>Census ACS 2024, BLS 2026</td></tr>
+          </tbody>
+        </table>
+        <ul class="actions">
+          <li><a class="primary" href="market-explorer.html">Open</a></li>
+        </ul>
+      </article>
+
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="how">
+    <h2 id="how">Before you open one</h2>
+    <p>Market Explorer works immediately. The other two start as an empty map: click Get latest data inside the tool and it downloads the current file from the state, or load a file you have saved. Either way the data stays in your browser and is sent nowhere.</p>
+    <ul class="sources">
+      <li>
+        <a href="https://www.ccld.dss.ca.gov/carefacilitysearch/">CCLD Transparency Website</a>
+        <span>California Department of Social Services. Licensing files for residential care facilities and home care agencies, refreshed every few days.</span>
+      </li>
+      <li>
+        <a href="https://data.chhs.ca.gov/dataset/healthcare-facility-locations">Healthcare Facility Locations</a>
+        <span>California Department of Public Health. Refreshed monthly; the DATA_DATE column shows the extract date.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section class="panel" aria-labelledby="status">
+    <h2 id="status">Status</h2>
+    <p>This is a staging index, not a release. Versions here may move without notice and the tools have not been through outside review. Figures on this page were measured against the September 2026 extracts and will drift as the source files are refreshed.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="shell">
+    <p>Built by Spencer Rogers. Tools and documentation copyright 2026.</p>
+    <p>Facility data published by the California Departments of Social Services and Public Health. Resident data from the U.S. Census Bureau American Community Survey. Employment and wages from the Bureau of Labor Statistics and the California Employment Development Department. Coordinates from the Census Bureau 2023 Gazetteer. Mapping by Leaflet, tiles by Esri.</p>
+  </div>
+</footer>
+
+</body>
+</html>
