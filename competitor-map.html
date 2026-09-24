@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Competitor Map</title>
+<link rel="stylesheet" href="assets/leaflet.css">
+<link rel="stylesheet" href="assets/core.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>Competitor Map</h1>
+  <p class="subtitle">Licensed California care providers mapped by county, city and citation history, with resident demand from the Census alongside. Choose a market below.</p>
+  <div class="tabs no-print" role="tablist">
+    <button class="tab active" data-ds="rcfe" role="tab" aria-selected="true">Residential care (RCFE)</button>
+    <button class="tab" data-ds="hco" role="tab" aria-selected="false">Home care agencies</button>
+  </div>
+
+  <div class="card no-print">
+    <h2>Load data</h2>
+    <p class="file-hint" id="loadHint"></p>
+    <div class="row">
+      <input type="file" id="csvFileInput" accept=".csv,.txt" hidden>
+      <button class="primary" id="fetchLatestBtn">Get latest data</button>
+      <button id="csvUploadBtn">Choose file</button>
+      <label><input type="checkbox" id="addToMap"> Add to what's already loaded</label>
+      <div class="spacer"></div>
+      <button id="clearAllBtn">Clear all</button>
+    </div>
+    <div id="dataAge"></div>
+    <div id="loadMessage"></div>
+    <div id="geoProgress"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Exact street addresses (optional)</h2>
+    <p class="file-hint">Facilities are placed at their ZIP code center by default, which is accurate enough at county and city zoom. To place them at their actual street address, run the file through the U.S. Census Bureau's free batch geocoder. It takes about ten seconds and matches roughly 95% of the list. Results are remembered in this browser, so this is a one-time step per CDSS file.</p>
+    <ol class="steps">
+      <li>Export the address list below.</li>
+      <li>Upload it at the <a href="https://geocoding.geo.census.gov/geocoder/locations/addressbatch?form" target="_blank" rel="noopener">Census batch address geocoder</a>, leaving the benchmark on its default, and download the result.</li>
+      <li>Bring that result file back here.</li>
+    </ol>
+    <div class="row">
+      <button id="exportAddrBtn">Export address list</button>
+      <input type="file" id="addrResultInput" accept=".csv,.txt" hidden>
+      <button class="primary" id="importAddrBtn">Import Census results</button>
+      <div class="spacer"></div>
+      <button id="forgetAddrBtn">Forget exact addresses</button>
+    </div>
+    <div id="addrMessage"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Reference location</h2>
+    <div class="row ref-row">
+      <input type="text" id="refInput" placeholder="Your address, city, or ZIP">
+      <button class="primary" id="addRefBtn">Set reference pin</button>
+      <button id="clearRefBtn">Clear</button>
+    </div>
+    <p class="file-hint" style="margin-top:8px;">Distances are straight-line miles from this point to each facility’s ZIP code center. A California city or 5-digit ZIP resolves instantly; a street address needs an internet lookup.</p>
+  </div>
+
+  <div class="card">
+    <div id="mapError" style="display:none;padding:12px 14px;margin-bottom:10px;border-radius:8px;background:#fbeceb;color:#8a2a20;font-size:13px;"></div>
+    <div class="row tight no-print demand-controls">
+      <label class="filter-label" for="demandMeasure">Demand overlay</label>
+      <select id="demandMeasure">
+        <option value="">None</option>
+        <option value="a65">Residents 65+</option>
+        <option value="a75">Residents 75+</option>
+        <option value="a85">Residents 85+</option>
+        <option value="al">65+ living alone</option>
+        <option value="il">65+ with independent living difficulty</option>
+        <option value="in">Median income, householder 65+</option>
+      </select>
+      <label class="filter-label" for="demandGeo">by</label>
+      <select id="demandGeo">
+        <option value="county">County</option>
+        <option value="zip">ZIP code</option>
+      </select>
+    </div>
+    <div id="map"></div>
+    <div class="legend">
+      <span class="key"><i style="background:var(--sev-clean)"></i> No Type A or B citations</span>
+      <span class="key"><i style="background:var(--sev-b)"></i> Type B citation</span>
+      <span class="key"><i style="background:var(--sev-a)"></i> Type A citation</span>
+      <span class="key"><span id="legendNote">Pin number is the facility count in that city. Color shows the worst citation level present.</span></span>
+    </div>
+    <div id="demandLegend"></div>
+    <div class="attribution">Map tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>. Location data from the <a href="https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html" target="_blank" rel="noopener">U.S. Census Bureau 2023 Gazetteer</a>. Agency data from the California Department of Social Services.</div>
+  </div>
+
+  <div class="card" id="marketCard">
+    <h2>Market demand</h2>
+    <div id="marketPanel"></div>
+  </div>
+
+  <div class="card">
+    <h2 id="resultsHeading">Facilities</h2>
+    <div class="row tight no-print">
+      <div class="filter-group">
+        <label class="filter-label">County</label>
+        <div class="multiselect" id="countyFilter">
+          <button type="button" class="multiselect-btn">All counties</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">City</label>
+        <div class="multiselect" id="cityFilter">
+          <button type="button" class="multiselect-btn">All cities</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Citations</label>
+        <div class="multiselect" id="severityFilter">
+          <button type="button" class="multiselect-btn">Any</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Status</label>
+        <div class="multiselect" id="statusFilter">
+          <button type="button" class="multiselect-btn">All statuses</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group" id="bandGroup">
+        <label class="filter-label">Size</label>
+        <div class="multiselect" id="bandFilter">
+          <button type="button" class="multiselect-btn">Any size</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group" id="typeGroup">
+        <label class="filter-label">Type</label>
+        <div class="multiselect" id="typeFilter">
+          <button type="button" class="multiselect-btn">All types</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <input type="search" id="searchInput" placeholder="Search name, licensee, address, ZIP" style="min-width:240px;flex:1;">
+      <button id="clearFiltersBtn">Clear filters</button>
+    </div>
+    <div class="row no-print">
+      <button class="primary" id="plotMapBtn">Zoom to results</button>
+      <label class="filter-label" for="pinDetail" style="margin-left:6px;">Pins</label>
+      <select id="pinDetail">
+        <option value="city">One per city</option>
+        <option value="address">One per facility</option>
+      </select>
+      <button id="csvBtn">Export CSV</button>
+      <button id="printBtn">Print / Save as PDF</button>
+      <div class="spacer"></div>
+      <span id="resultsSummary" class="results-summary"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr id="tableHead"></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <p class="file-hint" id="tableNote" style="margin-top:8px;"></p>
+  </div>
+</div>
+
+<script src="assets/leaflet.js"></script>
+<script src="data/gazetteer.js"></script>
+<script src="data/demand.js"></script>
+<script src="data/counties.js"></script>
+<script src="assets/competitor-map.js"></script>
+</body>
+</html>

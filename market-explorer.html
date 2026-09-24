@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Explorer</title>
+<link rel="stylesheet" href="assets/leaflet.css">
+<link rel="stylesheet" href="assets/explorer.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>Market Explorer</h1>
+  <p class="subtitle" id="subtitle">Resident population aged 65 and over by county and ZIP code, with the measures that indicate demand for care: age bands, living alone, independent living difficulty, and income. American Community Survey 2020 to 2024 five-year estimates, built into this file.</p>
+
+  <div class="tabs no-print" role="tablist">
+    <button class="tab active" id="tabDemo" role="tab" aria-selected="true">Who needs care</button>
+    <button class="tab" id="tabPay" role="tab" aria-selected="false">Who can pay</button>
+    <button class="tab" id="tabLabor" role="tab" aria-selected="false">Who staffs it</button>
+  </div>
+
+  <div class="card no-print">
+    <h2>View</h2>
+    <div class="row tight">
+      <div class="filter-group">
+        <label class="filter-label" for="measure">Measure</label>
+        <select id="measure">
+          <option value="a65">Residents 65+</option>
+          <option value="a75">Residents 75+</option>
+          <option value="a85">Residents 85+</option>
+          <option value="al">65+ living alone</option>
+          <option value="il">65+ with independent living difficulty</option>
+          <option value="in">Median income, householder 65+</option>
+        </select>
+      </div>
+      <div class="filter-group" id="thresholdGroup" style="display:none;">
+        <label class="filter-label" for="threshold">Income at or above</label>
+        <select id="threshold">
+          <option value="75">$75,000</option>
+          <option value="100" selected>$100,000</option>
+          <option value="150">$150,000</option>
+        </select>
+      </div>
+      <div class="filter-group" id="geoGroup">
+        <label class="filter-label" for="geo">Geography</label>
+        <select id="geo">
+          <option value="county">County</option>
+          <option value="zip">ZIP code</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">County</label>
+        <div class="multiselect" id="countyFilter">
+          <button type="button" class="multiselect-btn">All counties</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group" id="relGroup">
+        <label class="filter-label">Reliability</label>
+        <div class="multiselect" id="relFilter">
+          <button type="button" class="multiselect-btn">Any</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <input type="search" id="searchInput" placeholder="Search a county or ZIP" style="min-width:210px;">
+      <button id="clearFiltersBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="mapError" style="display:none;padding:12px 14px;margin-bottom:10px;border-radius:8px;background:#fbeceb;color:#8a2a20;font-size:13px;"></div>
+    <div id="map"></div>
+    <div id="demandLegend"></div>
+    <div class="attribution">Map tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>. Resident data from the <a href="https://www.census.gov/programs-surveys/acs" target="_blank" rel="noopener">U.S. Census Bureau American Community Survey</a>, 2020 to 2024 five-year estimates, tables B01001, B09020, B18107 and B19049. Boundaries from the Census Bureau 2024 cartographic files.</div>
+  </div>
+
+  <div class="card" id="detailCard">
+    <h2 id="detailHeading">Selected area</h2>
+    <div id="detailPanel"></div>
+  </div>
+
+  <div class="card">
+    <h2>All areas</h2>
+    <div class="row tight no-print">
+      <button class="primary" id="zoomBtn">Zoom to results</button>
+      <button id="csvBtn">Export CSV</button>
+      <button id="printBtn">Print / Save as PDF</button>
+      <div class="spacer"></div>
+      <span id="resultsSummary" class="results-summary"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="tableHead"></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <p class="file-hint" id="tableNote" style="margin-top:8px;"></p>
+  </div>
+</div>
+
+
+<script src="assets/leaflet.js"></script>
+<script src="data/gazetteer.js"></script>
+<script src="data/demand.js"></script>
+<script src="data/counties.js"></script>
+<script src="data/labor.js"></script>
+<script src="assets/market-explorer.js"></script>
+</body>
+</html>
