@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Referral Finder</title>
+<link rel="stylesheet" href="assets/leaflet.css">
+<link rel="stylesheet" href="assets/referral.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>Referral Finder</h1>
+  <p class="subtitle">Build referral lead lists from the CDPH health facility roster: 15,000 California facilities with phone, email and administrator contacts, mapped at their own coordinates.</p>
+
+  <div class="card no-print">
+    <h2>Load CDPH roster</h2>
+    <p class="file-hint">Get latest data downloads the current roster from the California open data portal, which CDPH updates monthly. You can also choose a file you have downloaded yourself. The roster carries coordinates for every facility, so everything maps the moment the data loads.</p>
+    <div class="row">
+      <input type="file" id="csvFileInput" accept=".csv,.txt" hidden>
+      <button class="primary" id="fetchLatestBtn">Get latest data</button>
+      <button id="csvUploadBtn">Choose file</button>
+      <label><input type="checkbox" id="addToMap"> Add to what's already loaded</label>
+      <div class="spacer"></div>
+      <button id="clearAllBtn">Clear all</button>
+    </div>
+    <div id="dataAge"></div>
+    <div id="loadMessage"></div>
+    <div id="geoProgress"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Reference location</h2>
+    <div class="row ref-row">
+      <input type="text" id="refInput" placeholder="Your office address, city, or ZIP">
+      <button class="primary" id="addRefBtn">Set reference pin</button>
+      <button id="clearRefBtn">Clear</button>
+    </div>
+    <p class="file-hint" style="margin-top:8px;">Distances are straight-line miles from this point to each facility. A California city or 5-digit ZIP resolves instantly; a street address needs an internet lookup.</p>
+  </div>
+
+  <div class="card">
+    <div id="mapError" style="display:none;padding:12px 14px;margin-bottom:10px;border-radius:8px;background:#fbeceb;color:#8a2a20;font-size:13px;"></div>
+    <div id="map"></div>
+    <div class="legend">
+      <span class="key"><i style="background:#14746f"></i> In-home care</span>
+      <span class="key"><i style="background:#6a3d9a"></i> Residential and LTC</span>
+      <span class="key"><i style="background:#b3261e"></i> Hospitals</span>
+      <span class="key"><i style="background:#1f6feb"></i> Clinics and outpatient</span>
+      <span class="key"><i style="background:#c77700"></i> Day programs</span>
+      <span class="key"><i style="background:#6b6156"></i> Other</span>
+      <span class="key"><span id="legendNote">Pin number is the facility count in that city. Color shows the most common category there.</span></span>
+    </div>
+    <div class="attribution">Map tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>. Facility data and coordinates from the California Department of Public Health health facility roster. Fallback city and ZIP coordinates from the <a href="https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html" target="_blank" rel="noopener">U.S. Census Bureau 2023 Gazetteer</a>.</div>
+  </div>
+
+  <div class="card">
+    <h2>Facilities</h2>
+    <div class="row tight no-print">
+      <div class="filter-group">
+        <label class="filter-label">County</label>
+        <div class="multiselect" id="countyFilter">
+          <button type="button" class="multiselect-btn">All counties</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">City</label>
+        <div class="multiselect" id="cityFilter">
+          <button type="button" class="multiselect-btn">All cities</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Category</label>
+        <div class="multiselect" id="familyFilter">
+          <button type="button" class="multiselect-btn">All categories</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Type</label>
+        <div class="multiselect" id="typeFilter">
+          <button type="button" class="multiselect-btn">All types</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Contact</label>
+        <div class="multiselect" id="contactFilter">
+          <button type="button" class="multiselect-btn">Any contact info</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">License</label>
+        <div class="multiselect" id="statusFilter">
+          <button type="button" class="multiselect-btn">All licenses</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Location</label>
+        <div class="multiselect" id="scopeFilter">
+          <button type="button" class="multiselect-btn">Main and satellite</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <input type="search" id="searchInput" placeholder="Search name, phone, email, address, type, ZIP" style="min-width:240px;flex:1;">
+      <button id="clearFiltersBtn">Clear filters</button>
+    </div>
+    <div class="row no-print">
+      <button class="primary" id="plotMapBtn">Zoom to results</button>
+      <label class="filter-label" for="pinDetail" style="margin-left:6px;">Pins</label>
+      <select id="pinDetail">
+        <option value="city">One per city</option>
+        <option value="address">One per facility</option>
+      </select>
+      <button id="csvBtn">Export lead list</button>
+      <button id="printBtn">Print / Save as PDF</button>
+      <div class="spacer"></div>
+      <span id="resultsSummary" class="results-summary"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr id="tableHead"></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <p class="file-hint" id="tableNote" style="margin-top:8px;"></p>
+  </div>
+</div>
+
+<script src="assets/leaflet.js"></script>
+<script src="data/gazetteer.js"></script>
+<script src="assets/referral-finder.js"></script>
+</body>
+</html>
