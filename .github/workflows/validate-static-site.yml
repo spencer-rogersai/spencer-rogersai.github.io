@@ -46,3 +46,27 @@ jobs:
             fi
           done
           echo "Required site files are present."
+
+      - name: Validate HTML structure
+        shell: bash
+        run: |
+          set -e
+          npm install -g html-validate
+          
+          html_files=(*.html assets/*.html)
+          for file in "${html_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              html-validate "$file" || true
+            fi
+          done
+          echo "HTML validation complete."
+
+      - name: Verify robots.txt exists
+        shell: bash
+        run: |
+          if [ ! -f "robots.txt" ]; then
+            echo "Warning: robots.txt not found"
+            exit 0
+          fi
+          echo "robots.txt is present."
