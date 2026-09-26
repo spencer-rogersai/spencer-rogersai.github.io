@@ -176,3 +176,8 @@ select{max-width:100%;}
   .filter-group select{width:100%;}
   .multiselect,.multiselect-btn{width:100%;}
 }
+
+/* Leaflet gives its map panes z-index 400 to 700, and its container does not
+   create a stacking context, so those panes compete in the page's root layer.
+   A dropdown opening over the map has to clear them. */
+.multiselect-panel{z-index:1200;}
