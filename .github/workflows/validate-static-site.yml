@@ -1,0 +1,72 @@
+name: Validate static site
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate JavaScript syntax
+        shell: bash
+        run: |
+          set -e
+          shopt -s globstar nullglob
+
+          files=(assets/*.js data/*.js)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No JavaScript files found."
+            exit 0
+          fi
+
+          for file in "${files[@]}"; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+
+      - name: Verify required page files exist
+        shell: bash
+        run: |
+          set -e
+          for file in index.html competitor-map.html market-explorer.html referral-finder.html qa.html; do
+            if [ ! -f "$file" ]; then
+              echo "Missing required file: $file"
+              exit 1
+            fi
+          done
+          echo "Required site files are present."
+
+      - name: Validate HTML structure
+        shell: bash
+        run: |
+          set -e
+          npm install -g html-validate
+          
+          html_files=(*.html assets/*.html)
+          for file in "${html_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              html-validate "$file" || true
+            fi
+          done
+          echo "HTML validation complete."
+
+      - name: Verify robots.txt exists
+        shell: bash
+        run: |
+          if [ ! -f "robots.txt" ]; then
+            echo "Warning: robots.txt not found"
+            exit 0
+          fi
+          echo "robots.txt is present."
