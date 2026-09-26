@@ -1013,18 +1013,19 @@ function warnStorage(){
 }
 
 function saveRecords(){
-  try{
-    localStorage.setItem((DS.prefix + "_records"), JSON.stringify({
-      version: SESSION_VERSION,
-      savedAt: new Date().toISOString(),
-      records: encodeRecords(agencies)
-    }));
-  }catch(e){ warnStorage(); }
+  // Compressing is asynchronous, so this returns before the write completes.
+  // Nothing downstream depends on the write, and writeSession discards a stale
+  // save if a newer one starts first.
+  writeSession((DS.prefix + "_records"), JSON.stringify({
+    version: SESSION_VERSION,
+    savedAt: new Date().toISOString(),
+    records: encodeRecords(agencies)
+  }), warnStorage);
 }
 
 function saveView(){
   try{
-    localStorage.setItem((DS.prefix + "_view"), JSON.stringify({
+    writeSession((DS.prefix + "_view"), JSON.stringify({
       version: SESSION_VERSION,
       counties: Array.from(filterState.counties),
       cities: Array.from(filterState.cities),
@@ -1050,11 +1051,11 @@ function clearSession(){
   }catch(e){}
 }
 
-function restoreSession(){
+async function restoreSession(){
   var recordsRaw, viewRaw;
   try{
-    recordsRaw = JSON.parse(localStorage.getItem((DS.prefix + "_records")) || "null");
-    viewRaw = JSON.parse(localStorage.getItem((DS.prefix + "_view")) || "null");
+    recordsRaw = JSON.parse((await readSession((DS.prefix + "_records"))) || "null");
+    viewRaw = JSON.parse((await readSession((DS.prefix + "_view"))) || "null");
   }catch(e){ return false; }
   if(!recordsRaw || recordsRaw.version !== SESSION_VERSION || !recordsRaw.records || !recordsRaw.records.length) return false;
 
@@ -1644,7 +1645,7 @@ function renderMarketPanel(){
 /* Switching datasets parks the current session and restores the other one.
    Each dataset keeps its own records, view and address cache, so moving
    between them never mixes their data. */
-function setDataset(key){
+async function setDataset(key){
   if(DS.key === key) return;
   saveView();
   DS = DATASETS[key];
@@ -1665,7 +1666,7 @@ function setDataset(key){
   renderTable();
   renderMarkers();
   showMessage(null);
-  restoreSession();
+  await restoreSession();
   renderFreshness();
   drawDemand();
 }
@@ -1690,7 +1691,10 @@ applyDatasetUi();
 renderHead();
 renderTable();
 refreshFilterOptions();
-restoreSession();
-renderFreshness();
-drawDemand();
+// Reading a saved session is asynchronous because it is decompressed on the
+// way in. Paint the empty state first, then fill it once the session arrives.
+restoreSession().then(function(){
+  renderFreshness();
+  drawDemand();
+});
 })();

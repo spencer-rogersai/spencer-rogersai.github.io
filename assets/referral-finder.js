@@ -838,18 +838,19 @@ function warnStorage(){
 }
 
 function saveRecords(){
-  try{
-    localStorage.setItem("cdphmap_records", JSON.stringify({
-      version: SESSION_VERSION,
-      savedAt: new Date().toISOString(),
-      records: encodeRecords(agencies)
-    }));
-  }catch(e){ warnStorage(); }
+  // Compressing is asynchronous, so this returns before the write completes.
+  // Nothing downstream depends on the write, and writeSession discards a stale
+  // save if a newer one starts first.
+  writeSession("cdphmap_records", JSON.stringify({
+    version: SESSION_VERSION,
+    savedAt: new Date().toISOString(),
+    records: encodeRecords(agencies)
+  }), warnStorage);
 }
 
 function saveView(){
   try{
-    localStorage.setItem("cdphmap_view", JSON.stringify({
+    writeSession("cdphmap_view", JSON.stringify({
       version: SESSION_VERSION,
       counties: Array.from(filterState.counties),
       cities: Array.from(filterState.cities),
@@ -874,11 +875,11 @@ function clearSession(){
   }catch(e){}
 }
 
-function restoreSession(){
+async function restoreSession(){
   var recordsRaw, viewRaw;
   try{
-    recordsRaw = JSON.parse(localStorage.getItem("cdphmap_records") || "null");
-    viewRaw = JSON.parse(localStorage.getItem("cdphmap_view") || "null");
+    recordsRaw = JSON.parse((await readSession("cdphmap_records")) || "null");
+    viewRaw = JSON.parse((await readSession("cdphmap_view")) || "null");
   }catch(e){ return false; }
   var storedRows = recordsRaw && recordsRaw.records ? (recordsRaw.records.r || recordsRaw.records) : null;
   if(!recordsRaw || recordsRaw.version !== SESSION_VERSION || !storedRows || !storedRows.length) return false;
@@ -1240,6 +1241,7 @@ try{
 renderHead();
 renderTable();
 refreshFilterOptions();
-restoreSession();
-renderFreshness();
+// Reading a saved session is asynchronous because it is decompressed on the
+// way in. Paint the empty state first, then fill it once the session arrives.
+restoreSession().then(renderFreshness);
 })();

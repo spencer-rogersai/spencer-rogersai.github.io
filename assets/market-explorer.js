@@ -227,6 +227,70 @@ function classOf(v, breaks){
   return breaks.length;
 }
 
+
+/* ---------- saved view ----------
+   This product loads no file, so there are no records to keep. What is worth
+   keeping is where the operator was: which tab, which measure, the filters,
+   and the area they had selected. Small enough to store as plain text. */
+var VIEW_KEY = "explorer_view";
+var VIEW_VERSION = 1;
+var restoring = false;
+
+function saveView(){
+  if(restoring) return;
+  try{
+    localStorage.setItem(VIEW_KEY, JSON.stringify({
+      version: VIEW_VERSION,
+      tab: state.tab,
+      threshold: state.threshold,
+      measure: state.measure,
+      level: state.level,
+      counties: Array.from(state.counties),
+      rels: Array.from(state.rels),
+      search: state.search,
+      sortKey: state.sortKey,
+      sortDir: state.sortDir,
+      selected: state.selected
+    }));
+  }catch(e){ /* the view is small and non-essential; a failure here is silent */ }
+}
+
+function restoreView(){
+  var saved;
+  try{ saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); }catch(e){ return false; }
+  if(!saved || saved.version !== VIEW_VERSION) return false;
+  restoring = true;                       // setTab and the controls all save; do not save while restoring
+  setTab(saved.tab === "pay" || saved.tab === "labor" ? saved.tab : "demo");
+  if(saved.threshold){
+    state.threshold = saved.threshold;
+    document.getElementById("threshold").value = saved.threshold;
+  }
+  if(saved.measure && measureSet()[saved.measure]){
+    state.measure = saved.measure;
+    document.getElementById("measure").value = saved.measure;
+  }
+  // The workforce tab is county-only, so a stored ZIP level is ignored there.
+  if(saved.level === "zip" && state.tab !== "labor"){
+    state.level = "zip";
+    document.getElementById("geo").value = "zip";
+  }
+  (saved.counties || []).forEach(function(v){ state.counties.add(v); });
+  (saved.rels || []).forEach(function(v){ state.rels.add(v); });
+  state.search = saved.search || "";
+  document.getElementById("searchInput").value = state.search;
+  if(saved.sortKey){ state.sortKey = saved.sortKey; state.sortDir = saved.sortDir === 1 ? 1 : -1; }
+  state.selected = saved.selected || null;
+  countyUI.refresh();
+  relUI.refresh();
+  restoring = false;
+  renderHead();
+  onChange();
+  if(state.selected) markSelection();
+  return true;
+}
+
+function clearView(){ try{ localStorage.removeItem(VIEW_KEY); }catch(e){} }
+
 /* ---------- map ---------- */
 function initMap(){
   map = L.map("map").setView([37.3, -119.5], 6);
@@ -379,6 +443,7 @@ function rankOf(a, key){
 
 function select(id){
   state.selected = id;
+  saveView();
   renderPanel();
   markSelection();
   renderTable();
@@ -594,6 +659,7 @@ document.getElementById("tableHead").addEventListener("click", function(e){
   else { state.sortKey = key; state.sortDir = key === "name" || key === "county" ? 1 : -1; }
   renderHead();
   renderTable();
+  saveView();
 });
 
 document.getElementById("tableBody").addEventListener("click", function(e){
@@ -649,7 +715,7 @@ function makeMultiSelect(containerId, selectedSet, getValues, getLabel, allLabel
   return { refresh: refresh };
 }
 
-function onChange(){ drawMap(); renderTable(); renderPanel(); }
+function onChange(){ drawMap(); renderTable(); renderPanel(); saveView(); }
 
 function measureOptions(){
   var set = measureSet(), keys = measureKeys();
@@ -807,5 +873,5 @@ try{
 }
 countyUI.refresh();
 relUI.refresh();
-setTab("demo");
+if(!restoreView()) setTab("demo");
 })();
