@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Growth Trends</title>
+<link rel="stylesheet" href="assets/trends.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>Growth Trends</h1>
+  <p class="subtitle">Openings, closures and net change by year, reconstructed from the licensing dates in the state file. Filter by county, city and facility size to see how a market has moved.</p>
+
+  <div class="tabs no-print" role="tablist">
+    <button class="tab active" data-ds="rcfe" role="tab" aria-selected="true">Residential care (RCFE)</button>
+    <button class="tab" data-ds="hco" role="tab" aria-selected="false">Home care agencies</button>
+  </div>
+
+  <div class="card no-print">
+    <h2>Load data</h2>
+    <p class="file-hint" id="loadHint"></p>
+    <div class="row">
+      <input type="file" id="csvFileInput" accept=".csv,.txt" hidden>
+      <button class="primary" id="fetchLatestBtn">Get latest data</button>
+      <button id="csvUploadBtn">Choose file</button>
+      <div class="spacer"></div>
+      <button id="clearAllBtn">Clear all</button>
+    </div>
+    <div id="dataAge"></div>
+    <div id="loadMessage"></div>
+  </div>
+
+  <div class="card no-print" id="filterCard">
+    <h2>Filters</h2>
+    <div class="row tight">
+      <div class="filter-group">
+        <label class="filter-label">County</label>
+        <div class="multiselect" id="countyFilter">
+          <button type="button" class="multiselect-btn">All counties</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">City</label>
+        <div class="multiselect" id="cityFilter">
+          <button type="button" class="multiselect-btn">All cities</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group" id="bandGroup">
+        <label class="filter-label">Size</label>
+        <div class="multiselect" id="bandFilter">
+          <button type="button" class="multiselect-btn">Any size</button>
+          <div class="multiselect-panel" hidden></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label" for="fromYear">From</label>
+        <select id="fromYear"></select>
+      </div>
+      <button id="clearFiltersBtn">Clear filters</button>
+      <div class="spacer"></div>
+      <span id="scopeSummary" class="results-summary"></span>
+    </div>
+    <div id="windowNote" class="note-box"></div>
+  </div>
+
+  <div class="card">
+    <div class="row tight no-print">
+      <div class="filter-group">
+        <label class="filter-label" for="chartMeasure">Chart</label>
+        <select id="chartMeasure">
+          <option value="stock">In operation at year end</option>
+          <option value="flow">Openings and closures</option>
+          <option value="netBeds">Net beds added</option>
+          <option value="growth">Growth rate</option>
+        </select>
+      </div>
+      <div class="spacer"></div>
+      <button id="csvBtn">Export CSV</button>
+      <button id="printBtn">Print / Save as PDF</button>
+    </div>
+    <div id="chart"></div>
+    <div id="chartNote" class="file-hint"></div>
+  </div>
+
+  <div class="card">
+    <h2>By year</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="tableHead"></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <p class="file-hint" id="tableNote"></p>
+  </div>
+</div>
+
+<script src="assets/session-store.js"></script>
+<script src="assets/facility-data.js"></script>
+<script src="assets/trends.js"></script>
+</body>
+</html>
