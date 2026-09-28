@@ -152,9 +152,10 @@ main.shell {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
 }
+@media (min-width: 1150px){ .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 .card {
   background: var(--surface);
@@ -168,6 +169,7 @@ main.shell {
 .card[data-accent="plum"]   { --accent: var(--violet); }
 .card[data-accent="green"]  { --accent: var(--green); }
 .card[data-accent="indigo"] { --accent: var(--indigo); }
+.card[data-accent="teal"]   { --accent: var(--teal); }
 
 .kicker {
   font-family: var(--sans);
