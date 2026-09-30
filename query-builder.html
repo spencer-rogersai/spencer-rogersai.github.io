@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Query Builder</title>
+<link rel="stylesheet" href="assets/core.css">
+<style>
+  /* Page specific. Everything else comes from core.css so this page looks like
+     the rest of the suite and prints by the same rules. */
+  .cond{
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    padding:8px 0; border-bottom:1px solid var(--line);
+  }
+  .cond:last-child{ border-bottom:none; }
+  .cond select, .cond input{ font-size:13px; }
+  .cond .grow{ flex:1 1 180px; min-width:120px; }
+  .cond .drop{ margin-left:auto; }
+  .cond-default{ color:var(--ink-soft); font-size:12.5px; }
+  .picker{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
+    gap:4px 18px; margin-top:6px;
+  }
+  .picker label{
+    display:flex; align-items:flex-start; gap:7px;
+    font-size:13px; padding:3px 0; cursor:pointer;
+  }
+  .picker label.off{ color:var(--ink-soft); cursor:default; }
+  .picker input{ margin-top:3px; }
+  .picker .why{ display:block; font-size:11.5px; color:var(--ink-soft); }
+  .count{ font-size:14px; font-weight:600; }
+  .problem{ padding:14px; background:var(--warn); color:#8a2a20; border-radius:6px; font-size:13.5px; }
+  .problem ul{ margin:6px 0 0 18px; padding:0; }
+  .flagmark{ color:#8a5410; cursor:help; }
+  .hdr-block dt{ font-size:12px; color:var(--ink-soft); }
+  .hdr-block dd{ margin:0 0 8px; font-size:13.5px; }
+  .spec-box{ width:100%; height:190px; font:12px/1.5 "SFMono-Regular",Consolas,monospace; }
+  details summary{ cursor:pointer; font-size:13.5px; }
+  @media print{
+    .picker, .cond{ display:none; }
+    .hdr-block{ page-break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Query Builder</h1>
+  <p class="subtitle">Build a question about the California licensing data and see the answer as you build it.
+  Closed records are loaded, so entries and closures can be counted; the status condition below decides what the
+  counts include.</p>
+
+  <div class="tabs no-print" role="tablist">
+    <button class="tab active" data-ds="rcfe" role="tab" aria-selected="true">Residential care (RCFE)</button>
+    <button class="tab" data-ds="hco" role="tab" aria-selected="false">Home care agencies</button>
+  </div>
+
+  <div class="card no-print">
+    <h2>Load data</h2>
+    <p class="file-hint" id="loadHint"></p>
+    <div class="row">
+      <input type="file" id="csvFileInput" accept=".csv,.txt" hidden>
+      <button class="primary" id="fetchLatestBtn">Get latest data</button>
+      <button id="csvUploadBtn">Choose file</button>
+      <div class="spacer"></div>
+      <button id="clearAllBtn">Clear</button>
+    </div>
+    <div id="loadMessage"></div>
+  </div>
+
+  <div class="card no-print" id="builderCard" style="display:none;">
+    <h2>Conditions</h2>
+    <div id="condList"></div>
+    <div class="row" style="margin-top:10px;">
+      <button id="addCond">Add a condition</button>
+      <div class="spacer"></div>
+      <span class="count" id="matchCount"></span>
+    </div>
+  </div>
+
+  <div class="card no-print" id="shapeCard" style="display:none;">
+    <h2>Shape</h2>
+    <div class="row">
+      <div class="filter-group">
+        <span class="filter-label">One row per</span>
+        <select id="groupBy"></select>
+      </div>
+      <div class="filter-group" id="framePlace">
+        <label><input type="checkbox" id="rowsAreAreas"> Include areas with no records</label>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Sort by</span>
+        <select id="sortField"></select>
+        <select id="sortDir">
+          <option value="desc">Highest first</option>
+          <option value="asc">Lowest first</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Show</span>
+        <select id="limit">
+          <option value="">Every row</option>
+          <option value="10">Top 10</option>
+          <option value="25">Top 25</option>
+          <option value="50">Top 50</option>
+          <option value="100">Top 100</option>
+        </select>
+      </div>
+    </div>
+
+    <h2 style="margin-top:18px;">Measures</h2>
+    <div class="picker" id="measurePicker"></div>
+
+    <div class="row" style="margin-top:16px;">
+      <div class="filter-group">
+        <span class="filter-label">Entries and closures cover</span>
+        <select id="windowYears">
+          <option value="">Everything in the file</option>
+          <option value="1">The last year</option>
+          <option value="3">The last 3 years</option>
+          <option value="5">The last 5 years</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Blank a ratio when its population estimate is weaker than</span>
+        <select id="maxCv">
+          <option value="">Never blank it, just mark it</option>
+          <option value="20">20% margin</option>
+          <option value="30">30% margin</option>
+          <option value="50">50% margin</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">or the area holds fewer than</span>
+        <select id="minDen">
+          <option value="">No minimum</option>
+          <option value="50">50 seniors</option>
+          <option value="100">100 seniors</option>
+          <option value="250">250 seniors</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="reportCard" style="display:none;">
+    <h2 id="reportHeading">Result</h2>
+    <div class="hdr-block" id="reportHeader"></div>
+    <div class="row tight no-print">
+      <button class="primary" id="printBtn">Print or save as PDF</button>
+      <button id="csvBtn">Export CSV</button>
+      <div class="spacer"></div>
+      <span class="results-summary" id="resultsSummary"></span>
+    </div>
+    <div id="problem"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="tableHead"></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <p class="file-hint" id="tableNote" style="margin-top:8px;"></p>
+  </div>
+
+  <div class="card no-print" id="specCard" style="display:none;">
+    <details>
+      <summary>The query itself</summary>
+      <p class="file-hint">Copy this to keep a question, or paste one in and apply it. This is the whole of a
+      saved query.</p>
+      <textarea class="spec-box" id="specBox" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:8px;">
+        <button id="copySpec">Copy</button>
+        <button id="applySpec">Apply what is in the box</button>
+        <span class="file-hint" id="specMessage"></span>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script src="data/gazetteer.js"></script>
+<script src="data/demand.js"></script>
+<script src="data/labor.js"></script>
+<script src="assets/facility-data.js"></script>
+<script src="assets/query-catalog.js"></script>
+<script src="assets/query-engine.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ---------- state ---------- */
+var state = {
+  dataset: "rcfe",
+  records: [],
+  conditions: CATALOG.defaultConditions(),
+  groupBy: "county",
+  rowsAreAreas: false,
+  measures: ["facilities", "per65"],
+  windowYears: "",
+  sort: { field: "per65", dir: "desc" },
+  limit: "",
+  maxCv: "",
+  minDen: ""
+};
+var lastResult = null;
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s === null || s === undefined ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function say(msg, kind){
+  var m = el("loadMessage");
+  m.textContent = msg || "";
+  m.className = msg ? (kind || "ok") : "";
+}
+
+/* The product pages keep locate inside a closure, so do the lookup here from
+   the shared gazetteer tables. */
+function locatePoint(city, zip){
+  if(typeof CA_ZIP !== "undefined"){
+    var m = String(zip || "").trim().match(/^(\d{5})/);
+    if(m && CA_ZIP[m[1]]) return { lat: CA_ZIP[m[1]].lat, lng: CA_ZIP[m[1]].lng, source: "zip" };
+  }
+  if(typeof CA_PLACE !== "undefined" && city){
+    var k = String(city).trim().toUpperCase().replace(/\s+/g, " ");
+    if(CA_PLACE[k]) return { lat: CA_PLACE[k].lat, lng: CA_PLACE[k].lng, source: "city" };
+  }
+  return null;
+}
+
+/* ---------- loading ---------- */
+function setHint(){
+  el("loadHint").textContent = DATASETS[state.dataset].hint;
+}
+
+function loadText(text, label){
+  var parsed;
+  try{ parsed = parseFacilityFile(text, DATASETS[state.dataset], { includeClosed: true, locate: locatePoint }); }
+  catch(e){ say("The file could not be read: " + e.message, "error"); return; }
+  if(parsed.error){ say(parsed.error, "error"); return; }
+
+  state.records = parsed.records;
+  ENGINE.enrich(state.records, state.dataset);
+
+  // With closed records kept, the parser's skipped count is a count of what is
+  // in the file rather than what was left out, so the wording has to differ
+  // from the map tools'.
+  var closed = parsed.skippedClosed;
+  say(parsed.records.length.toLocaleString("en-US") + " records loaded from " + label + ", including " +
+      closed.toLocaleString("en-US") + " closed or on probation. " +
+      "The status condition below decides which of them the counts include.", "ok");
+
+  el("builderCard").style.display = "";
+  el("shapeCard").style.display = "";
+  el("specCard").style.display = "";
+  renderAll();
+}
+
+el("csvUploadBtn").addEventListener("click", function(){ el("csvFileInput").click(); });
+el("csvFileInput").addEventListener("change", function(e){
+  var f = e.target.files[0];
+  if(!f) return;
+  say("Reading " + f.name + "...");
+  var r = new FileReader();
+  r.onload = function(){ loadText(String(r.result), f.name); };
+  r.onerror = function(){ say("The file could not be read.", "error"); };
+  r.readAsText(f);
+});
+el("fetchLatestBtn").addEventListener("click", function(){
+  say("Downloading the current file. This can take a minute.");
+  fetchCcld(DATASETS[state.dataset].ccldId).then(function(text){
+    loadText(text, "the CCLD Transparency Website");
+  }, function(err){
+    say("The download failed because " + err.message + ". Choose a file you have saved instead.", "error");
+  });
+});
+el("clearAllBtn").addEventListener("click", function(){
+  state.records = [];
+  lastResult = null;
+  ["builderCard","shapeCard","reportCard","specCard"].forEach(function(id){ el(id).style.display = "none"; });
+  say("");
+});
+
+Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(tab){
+  tab.addEventListener("click", function(){
+    if(tab.dataset.ds === state.dataset) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(t){
+      t.classList.toggle("active", t === tab);
+      t.setAttribute("aria-selected", t === tab ? "true" : "false");
+    });
+    state.dataset = tab.dataset.ds;
+    state.records = [];
+    // Measures and conditions can name fields the other dataset does not have.
+    state.conditions = CATALOG.defaultConditions();
+    state.measures = state.measures.filter(function(id){
+      var m = CATALOG.measure(id);
+      return m && m.datasets.indexOf(state.dataset) !== -1;
+    });
+    if(!state.measures.length) state.measures = ["facilities"];
+    ["builderCard","shapeCard","reportCard","specCard"].forEach(function(id){ el(id).style.display = "none"; });
+    setHint();
+    say("");
+  });
+});
+
+/* ---------- conditions ---------- */
+function conditionFields(){
+  return CATALOG.fieldsFor(state.dataset, "filter").filter(function(f){
+    // A distance condition needs a reference address and a geocoder, which this
+    // page does not carry yet. The engine supports it.
+    return f.type !== "geo";
+  }).sort(function(a, b){ return a.label.localeCompare(b.label); });
+}
+
+function renderConditions(){
+  var host = el("condList");
+  host.innerHTML = "";
+  var fields = conditionFields();
+
+  state.conditions.forEach(function(c, i){
+    var f = CATALOG.field(c.field);
+    var row = document.createElement("div");
+    row.className = "cond";
+
+    var fieldSel = document.createElement("select");
+    fields.forEach(function(ff){
+      var o = document.createElement("option");
+      o.value = ff.id; o.textContent = ff.label;
+      if(ff.id === c.field) o.selected = true;
+      fieldSel.appendChild(o);
+    });
+    fieldSel.addEventListener("change", function(){
+      var nf = CATALOG.field(fieldSel.value);
+      state.conditions[i] = { field: nf.id, op: CATALOG.opsFor(nf.type)[0], value: defaultValue(nf) };
+      renderAll();
+    });
+    row.appendChild(fieldSel);
+
+    var opSel = document.createElement("select");
+    CATALOG.opsFor(f.type).forEach(function(op){
+      var o = document.createElement("option");
+      o.value = op; o.textContent = CATALOG.opLabel(op);
+      if(op === c.op) o.selected = true;
+      opSel.appendChild(o);
+    });
+    opSel.addEventListener("change", function(){
+      state.conditions[i].op = opSel.value;
+      state.conditions[i].value = defaultValue(f, opSel.value);
+      renderAll();
+    });
+    row.appendChild(opSel);
+
+    valueControl(row, f, c, i);
+
+    var drop = document.createElement("button");
+    drop.className = "drop";
+    drop.textContent = "Remove";
+    drop.addEventListener("click", function(){
+      state.conditions.splice(i, 1);
+      renderAll();
+    });
+    row.appendChild(drop);
+
+    if(f.defaultCondition){
+      var note = document.createElement("span");
+      note.className = "cond-default";
+      note.textContent = "Remove this to count closed records too";
+      row.appendChild(note);
+    }
+
+    host.appendChild(row);
+  });
+
+  if(!state.conditions.length){
+    var none = document.createElement("p");
+    none.className = "file-hint";
+    none.textContent = "No conditions, so every record in the file is included, closed ones among them.";
+    host.appendChild(none);
+  }
+}
+
+function defaultValue(f, op){
+  op = op || CATALOG.opsFor(f.type)[0];
+  if(op === "between") return { from: "", to: "" };
+  if(f.type === "category") return [];
+  if(CATALOG.acceptsList(op)) return [];
+  return "";
+}
+
+function valueControl(row, f, c, i){
+  if(c.op === "isBlank" || c.op === "isTrue" || c.op === "isFalse" || c.op === "isZero") return;
+
+  function commit(v, live){
+    state.conditions[i].value = v;
+    if(live) scheduleRun(); else renderAll();
+  }
+
+  if(c.op === "between"){
+    ["from","to"].forEach(function(part){
+      var inp = document.createElement("input");
+      inp.type = f.type === "number" ? "number" : "text";
+      inp.placeholder = part;
+      inp.value = (c.value && c.value[part]) || "";
+      inp.addEventListener("input", function(){
+        var v = { from: state.conditions[i].value.from, to: state.conditions[i].value.to };
+        v[part] = inp.value;
+        commit(v, true);
+      });
+      row.appendChild(inp);
+    });
+    return;
+  }
+
+  // A known list of values is a list to pick from, not something to type.
+  if(f.values || (CATALOG.acceptsList(c.op) && knownValues(f).length)){
+    var sel = document.createElement("select");
+    sel.multiple = true;
+    sel.size = Math.min(6, Math.max(3, knownValues(f).length));
+    sel.className = "grow";
+    var chosen = {};
+    asList(c.value).forEach(function(v){ chosen[String(v).toLowerCase()] = 1; });
+    knownValues(f).forEach(function(v){
+      var o = document.createElement("option");
+      o.value = v.value; o.textContent = v.label;
+      if(chosen[String(v.value).toLowerCase()]) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function(){
+      commit(Array.prototype.filter.call(sel.options, function(o){ return o.selected; })
+        .map(function(o){ return o.value; }), false);
+    });
+    row.appendChild(sel);
+    return;
+  }
+
+  var inp = document.createElement("input");
+  inp.type = f.type === "number" ? "number" : "text";
+  inp.className = "grow";
+  inp.placeholder = f.type === "date" ? "M/D/YYYY" : "value";
+  inp.value = asList(c.value).join(", ");
+  inp.addEventListener("input", function(){
+    var raw = inp.value;
+    commit(CATALOG.acceptsList(c.op)
+      ? raw.split(",").map(function(s){ return s.trim(); }).filter(Boolean)
+      : raw, true);
+  });
+  row.appendChild(inp);
+}
+
+function asList(v){ return Object.prototype.toString.call(v) === "[object Array]" ? v : (v === "" || v === undefined || v === null ? [] : [v]); }
+
+/* Values a field is known to take. Declared ones come from the catalog; for
+   county, city and ZIP the file itself is the list. */
+function knownValues(f){
+  if(f.values) return f.values;
+  if(["county","city","zip","licensee"].indexOf(f.id) === -1) return [];
+  var seen = {};
+  state.records.forEach(function(r){ if(r[f.id]) seen[r[f.id]] = 1; });
+  var out = Object.keys(seen).sort();
+  if(out.length > 400) return [];       // too many to pick from, so type it
+  return out.map(function(v){ return { value: v, label: v }; });
+}
+
+el("addCond").addEventListener("click", function(){
+  var f = conditionFields()[0];
+  state.conditions.push({ field: f.id, op: CATALOG.opsFor(f.type)[0], value: defaultValue(f) });
+  renderAll();
+});
+
+/* ---------- shape controls ---------- */
+function renderShape(){
+  var groupSel = el("groupBy");
+  var groupFields = CATALOG.groupFieldsFor(state.dataset).filter(function(f){
+    return f.grains && f.grains.length && f.grains[0] !== "facility";
+  });
+  groupSel.innerHTML = "";
+  var none = document.createElement("option");
+  none.value = ""; none.textContent = "Each record, no grouping";
+  groupSel.appendChild(none);
+  groupFields.forEach(function(f){
+    var o = document.createElement("option");
+    o.value = f.id; o.textContent = f.label;
+    if(f.id === state.groupBy) o.selected = true;
+    groupSel.appendChild(o);
+  });
+  if(!state.groupBy) none.selected = true;
+
+  var grain = ENGINE.grainOf(specFromState());
+  var framePossible = (grain === "county" || grain === "zip");
+  el("framePlace").style.display = framePossible ? "" : "none";
+  el("rowsAreAreas").checked = framePossible && state.rowsAreAreas;
+
+  // Measures, with the ones this grain cannot serve shown disabled and why.
+  var picker = el("measurePicker");
+  picker.innerHTML = "";
+  if(!state.groupBy){
+    var p = document.createElement("p");
+    p.className = "file-hint";
+    p.textContent = "A list of records shows the records themselves, so there is nothing to measure.";
+    picker.appendChild(p);
+  }else{
+    CATALOG.measuresFor(state.dataset, grain).forEach(function(entry){
+      var m = entry.measure;
+      var label = document.createElement("label");
+      if(!entry.enabled) label.className = "off";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = state.measures.indexOf(m.id) !== -1;
+      box.disabled = !entry.enabled;
+      box.addEventListener("change", function(){
+        if(box.checked) state.measures.push(m.id);
+        else state.measures = state.measures.filter(function(x){ return x !== m.id; });
+        renderAll();
+      });
+      label.appendChild(box);
+      var text = document.createElement("span");
+      text.innerHTML = esc(m.label) +
+        (entry.enabled ? "" : '<span class="why">' + esc(entry.whyDisabled) + "</span>");
+      label.appendChild(text);
+      picker.appendChild(label);
+    });
+  }
+
+  var sortSel = el("sortField");
+  sortSel.innerHTML = "";
+  var byName = document.createElement("option");
+  byName.value = ""; byName.textContent = "Name";
+  sortSel.appendChild(byName);
+  state.measures.forEach(function(id){
+    var m = CATALOG.measure(id);
+    if(!m) return;
+    var o = document.createElement("option");
+    o.value = id; o.textContent = m.label;
+    if(id === state.sort.field) o.selected = true;
+    sortSel.appendChild(o);
+  });
+  if(!state.measures.length || state.measures.indexOf(state.sort.field) === -1){
+    if(state.sort.field && state.measures.indexOf(state.sort.field) === -1) state.sort.field = "";
+    byName.selected = true;
+  }
+  el("sortDir").value = state.sort.dir;
+  el("limit").value = state.limit;
+  el("windowYears").value = state.windowYears;
+  el("maxCv").value = state.maxCv;
+  el("minDen").value = state.minDen;
+}
+
+el("groupBy").addEventListener("change", function(){
+  state.groupBy = this.value;
+  if(!state.groupBy) state.rowsAreAreas = false;
+  renderAll();
+});
+el("rowsAreAreas").addEventListener("change", function(){ state.rowsAreAreas = this.checked; renderAll(); });
+el("sortField").addEventListener("change", function(){ state.sort.field = this.value; renderAll(); });
+el("sortDir").addEventListener("change", function(){ state.sort.dir = this.value; renderAll(); });
+el("limit").addEventListener("change", function(){ state.limit = this.value; renderAll(); });
+el("windowYears").addEventListener("change", function(){ state.windowYears = this.value; renderAll(); });
+el("maxCv").addEventListener("change", function(){ state.maxCv = this.value; renderAll(); });
+el("minDen").addEventListener("change", function(){ state.minDen = this.value; renderAll(); });
+
+/* ---------- spec ---------- */
+function specFromState(){
+  var measures = state.measures.map(function(id){
+    var m = CATALOG.measure(id);
+    var inst = { id: id };
+    if(state.windowYears && m && (m.window || m.maxWindowYears)) inst.years = Number(state.windowYears);
+    return inst;
+  });
+  var spec = {
+    v: 1,
+    dataset: state.dataset,
+    conditions: state.conditions.filter(function(c){
+      // A condition with nothing typed in it is not yet a condition.
+      if(["isBlank","isTrue","isFalse","isZero"].indexOf(c.op) !== -1) return true;
+      if(c.op === "between") return c.value && c.value.from !== "" && c.value.to !== "";
+      var v = c.value;
+      return Object.prototype.toString.call(v) === "[object Array]" ? v.length > 0 : String(v || "") !== "";
+    }),
+    rowsAre: state.rowsAreAreas ? "areas" : "facilities",
+    groupBy: state.groupBy ? [state.groupBy] : [],
+    measures: state.groupBy ? measures : [],
+    shape: state.groupBy ? "summary" : "detail",
+    sort: state.sort.field ? { field: state.sort.field, dir: state.sort.dir } : null,
+    limit: state.limit ? Number(state.limit) : null,
+    reliability: {
+      maxCv: state.maxCv ? Number(state.maxCv) : null,
+      minDenominator: state.minDen ? Number(state.minDen) : null
+    }
+  };
+  return spec;
+}
+
+function stateFromSpec(spec){
+  state.dataset = spec.dataset || state.dataset;
+  state.conditions = (spec.conditions || []).slice();
+  state.groupBy = (spec.groupBy && spec.groupBy[0]) || "";
+  state.rowsAreAreas = spec.rowsAre === "areas";
+  state.measures = (spec.measures || []).map(function(m){ return m.id; });
+  var withYears = (spec.measures || []).filter(function(m){ return m.years; })[0];
+  state.windowYears = withYears ? String(withYears.years) : "";
+  state.sort = spec.sort ? { field: spec.sort.field, dir: spec.sort.dir } : { field: "", dir: "desc" };
+  state.limit = spec.limit ? String(spec.limit) : "";
+  var rel = spec.reliability || {};
+  state.maxCv = rel.maxCv ? String(rel.maxCv) : "";
+  state.minDen = rel.minDenominator ? String(rel.minDenominator) : "";
+}
+
+/* ---------- running ---------- */
+var timer = null;
+function scheduleRun(){
+  // Typing should not run the query on every keystroke. Everything else runs at
+  // once, because a dropdown is a finished decision.
+  if(timer) clearTimeout(timer);
+  timer = setTimeout(runNow, 250);
+}
+function renderAll(){
+  renderConditions();
+  renderShape();
+  runNow();
+}
+
+function runNow(){
+  if(!state.records.length) return;
+  var spec = specFromState();
+  el("specBox").value = JSON.stringify(spec, null, 2);
+  el("reportCard").style.display = "";
+
+  var out = ENGINE.run(spec, state.records);
+  lastResult = out;
+
+  if(!out.ok){
+    // An invalid query explains itself and leaves every control where it is, so
+    // the thing that needs changing can be changed.
+    el("problem").innerHTML = '<div class="problem">This query cannot run as it stands.<ul>' +
+      out.errors.map(function(e){ return "<li>" + esc(e) + "</li>"; }).join("") + "</ul></div>";
+    el("tableHead").innerHTML = "";
+    el("tableBody").innerHTML = "";
+    el("reportHeader").innerHTML = "";
+    el("resultsSummary").textContent = "";
+    el("matchCount").textContent = "";
+    el("tableNote").textContent = "";
+    return;
+  }
+
+  el("problem").innerHTML = "";
+  renderHeader(out);
+  if(spec.shape === "detail") renderDetail(out);
+  else renderSummary(out);
+
+  var subject = DATASETS[state.dataset].subjectPlural;
+  el("matchCount").textContent = out.header.recordsMatched.toLocaleString("en-US") + " " + subject + " match";
+  el("resultsSummary").textContent = spec.shape === "detail"
+    ? out.header.recordsMatched.toLocaleString("en-US") + " " + subject
+    : out.rows.length.toLocaleString("en-US") + " rows, " +
+      out.header.recordsMatched.toLocaleString("en-US") + " " + subject;
+}
+
+/* ---------- rendering ---------- */
+function renderHeader(out){
+  var h = out.header;
+  var parts = [];
+  parts.push(["Market", h.datasetLabel]);
+  parts.push(["Conditions", h.conditions.length ? h.conditions.join("; ") : "None, so every record is included"]);
+  parts.push(["Records", h.recordsMatched.toLocaleString("en-US") + " of " +
+    h.recordsLoaded.toLocaleString("en-US") + " in the file"]);
+  if(h.reliability && (h.reliability.maxCv || h.reliability.minDenominator)){
+    var bits = [];
+    if(h.reliability.maxCv) bits.push("ratios blanked above a " + h.reliability.maxCv + "% margin");
+    if(h.reliability.minDenominator) bits.push("and where the area holds fewer than " +
+      h.reliability.minDenominator + " residents 65 and over");
+    parts.push(["Reliability", bits.join(" ")]);
+  }
+  parts.push(["Prepared", h.generatedAt]);
+
+  var html = "<dl>";
+  parts.forEach(function(p){ html += "<dt>" + esc(p[0]) + "</dt><dd>" + esc(p[1]) + "</dd>"; });
+  html += "</dl>";
+  if(h.notes.length) html += '<p class="file-hint">' + h.notes.map(esc).join(" ") + "</p>";
+  el("reportHeader").innerHTML = html;
+
+  var warn = out.warnings.length ? out.warnings.join(" ") : "";
+  el("tableNote").textContent = warn;
+}
+
+function fmt(cell, col){
+  if(!cell || cell.value === null || cell.value === undefined) return "";
+  var v = cell.value;
+  if(col.key === "shareOfParent" || col.key === "shareClean") return (v * 100).toFixed(1) + "%";
+  if(col.money) return "$" + v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if(col.ratio) return v.toFixed(2);
+  if(Math.abs(v - Math.round(v)) < 0.0001) return Math.round(v).toLocaleString("en-US");
+  return v.toFixed(1);
+}
+
+function flagMark(cell){
+  if(!cell || !cell.flags || !cell.flags.length) return "";
+  var why = {
+    noDemographicRecord: "No population is published for this area.",
+    noEstimate: "The population estimate for this area is zero or missing.",
+    noDenominator: "There is no population to divide by, so this is blank rather than zero.",
+    unreliable: "The population estimate behind this has a wide margin of error.",
+    excludedUnreliable: "Blanked: the population estimate has a wider margin than the setting allows.",
+    excludedThin: "Blanked: the area holds fewer residents than the setting allows."
+  };
+  var text = cell.flags.map(function(f){ return why[f] || f; }).join(" ");
+  if(cell.cv !== null && cell.cv !== undefined) text += " Margin of error about " + cell.cv + "%.";
+  return ' <span class="flagmark" title="' + esc(text) + '">\u26A0</span>';
+}
+
+function renderSummary(out){
+  var head = el("tableHead"), body = el("tableBody");
+  head.innerHTML = out.columns.map(function(c){
+    return "<th" + (c.group ? "" : ' class="num"') + ">" + esc(c.label) + "</th>";
+  }).join("");
+
+  if(!out.rows.length){
+    body.innerHTML = '<tr><td colspan="' + out.columns.length + '" class="empty-note">Nothing matches.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = out.rows.map(function(r){
+    var cells = out.columns.map(function(c){
+      if(c.group) return "<td>" + esc(r.label) + "</td>";
+      var cell = r.cells[c.key];
+      return '<td class="num">' + esc(fmt(cell, c)) + flagMark(cell) + "</td>";
+    });
+    return "<tr>" + cells.join("") + "</tr>";
+  }).join("");
+}
+
+function detailColumns(){
+  var cols = [
+    { id: "name", label: "Name" },
+    { id: "city", label: "City" },
+    { id: "county", label: "County" },
+    { id: "zip", label: "ZIP" },
+    { id: "status", label: "Status" },
+    { id: "licenseDate", label: "First licensed" },
+    { id: "totalVisits", label: "Visits", num: true },
+    { id: "citations", label: "Citations", num: true },
+    { id: "typeA", label: "Type A", num: true }
+  ];
+  if(DATASETS[state.dataset].hasCapacity)
+    cols.splice(5, 0, { id: "capacity", label: "Beds", num: true });
+  return cols;
+}
+
+function renderDetail(out){
+  var cols = detailColumns();
+  el("tableHead").innerHTML = cols.map(function(c){
+    return "<th" + (c.num ? ' class="num"' : "") + ">" + esc(c.label) + "</th>";
+  }).join("");
+
+  var rows = out.detail || [];
+  if(state.limit) rows = rows.slice(0, Number(state.limit));
+  if(!rows.length){
+    el("tableBody").innerHTML = '<tr><td colspan="' + cols.length + '" class="empty-note">Nothing matches.</td></tr>';
+    return;
+  }
+  el("tableBody").innerHTML = rows.map(function(r){
+    return "<tr>" + cols.map(function(c){
+      var v = r[c.id];
+      return "<td" + (c.num ? ' class="num"' : "") + ">" +
+        esc(c.num ? (v || 0).toLocaleString("en-US") : (v || "")) + "</td>";
+    }).join("") + "</tr>";
+  }).join("");
+}
+
+/* ---------- output ---------- */
+el("printBtn").addEventListener("click", function(){ window.print(); });
+
+el("csvBtn").addEventListener("click", function(){
+  if(!lastResult || !lastResult.ok) return;
+  function f(v){
+    var s = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  var lines = [];
+  var spec = specFromState();
+
+  if(spec.shape === "detail"){
+    var cols = detailColumns();
+    lines.push(cols.map(function(c){ return f(c.label); }).join(","));
+    (lastResult.detail || []).forEach(function(r){
+      lines.push(cols.map(function(c){ return f(r[c.id]); }).join(","));
+    });
+  }else{
+    var headers = [];
+    lastResult.columns.forEach(function(c){
+      headers.push(c.label);
+      if(c.ratio){ headers.push(c.label + " denominator"); headers.push(c.label + " margin of error %"); }
+    });
+    lines.push(headers.map(f).join(","));
+    lastResult.rows.forEach(function(r){
+      var row = [];
+      lastResult.columns.forEach(function(c){
+        if(c.group){ row.push(r.label); return; }
+        var cell = r.cells[c.key];
+        row.push(cell ? cell.value : "");
+        if(c.ratio){ row.push(cell ? cell.denominator : ""); row.push(cell ? cell.cv : ""); }
+      });
+      lines.push(row.map(f).join(","));
+    });
+  }
+
+  var blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = state.dataset + "-query.csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+});
+
+/* ---------- the query itself ---------- */
+el("copySpec").addEventListener("click", function(){
+  el("specBox").select();
+  try{ document.execCommand("copy"); el("specMessage").textContent = "Copied."; }
+  catch(e){ el("specMessage").textContent = "Select the text and copy it."; }
+});
+
+el("applySpec").addEventListener("click", function(){
+  var spec;
+  try{ spec = JSON.parse(el("specBox").value); }
+  catch(e){ el("specMessage").textContent = "That is not a query: " + e.message; return; }
+  if(spec.dataset && spec.dataset !== state.dataset){
+    el("specMessage").textContent = "That query is for the " +
+      (DATASETS[spec.dataset] ? DATASETS[spec.dataset].label.toLowerCase() : spec.dataset) +
+      ". Switch market and load that file first.";
+    return;
+  }
+  stateFromSpec(spec);
+  el("specMessage").textContent = "Applied.";
+  renderAll();
+});
+
+/* ---------- start ---------- */
+var missing = [];
+if(typeof parseFacilityFile !== "function") missing.push("assets/facility-data.js");
+if(typeof CATALOG === "undefined") missing.push("assets/query-catalog.js");
+if(typeof ENGINE === "undefined") missing.push("assets/query-engine.js");
+if(typeof DEMAND === "undefined") missing.push("data/demand.js");
+if(typeof LABOR === "undefined") missing.push("data/labor.js");
+if(missing.length) say("These did not load: " + missing.join(", ") + ". Check the paths.", "error");
+setHint();
+})();
+</script>
+</body>
+</html>
