@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data verification</title>
+<style>
+  :root{
+    --ink:#1c2024;
+    --muted:#5d666f;
+    --line:#d8dce0;
+    --panel:#ffffff;
+    --page:#f3f4f2;
+    --flag:#8a4b16;
+    --good:#2f5d3a;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    padding:28px 20px 60px;
+    background:var(--page);
+    color:var(--ink);
+    font:15px/1.55 Georgia, "Iowan Old Style", "Times New Roman", serif;
+  }
+  .wrap{ max-width:940px; margin:0 auto; }
+  h1{ font-size:27px; margin:0 0 6px; font-weight:normal; }
+  h2{ font-size:19px; margin:0 0 12px; font-weight:normal; }
+  h3{ font-size:15px; margin:22px 0 8px; font-weight:bold; }
+  .lede{ color:var(--muted); margin:0 0 24px; max-width:66ch; }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    padding:18px 20px;
+    margin-bottom:18px;
+  }
+  .row{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  label{ font-size:14px; color:var(--muted); }
+  button, select, input[type=file]{
+    font:14px/1.3 inherit;
+    padding:7px 12px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+  }
+  button{ cursor:pointer; }
+  button:hover{ background:#eceeec; }
+  button.primary{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  button.primary:hover{ background:#000; }
+  button[disabled]{ opacity:.5; cursor:default; }
+  button:focus-visible, select:focus-visible, input:focus-visible{ outline:2px solid var(--ink); outline-offset:2px; }
+  table{ border-collapse:collapse; width:100%; margin:6px 0 14px; font-size:14px; }
+  th, td{ border-bottom:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top; }
+  th{ font-weight:bold; }
+  td.num, th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  .status{ margin:12px 0 0; min-height:1.4em; }
+  .status.err{ color:var(--flag); }
+  .flag{ color:var(--flag); }
+  .ok{ color:var(--good); }
+  .note{ color:var(--muted); font-size:13px; max-width:70ch; }
+  textarea{
+    width:100%; height:300px;
+    font:12px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    border:1px solid var(--line); padding:10px;
+  }
+  .scroll{ max-height:280px; overflow:auto; border:1px solid var(--line); padding:0 10px; }
+  .scroll table{ margin:8px 0; }
+  .cols{ display:flex; gap:26px; flex-wrap:wrap; }
+  .cols > div{ flex:1 1 260px; min-width:240px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Data verification</h1>
+  <p class="lede">Loads a CDSS licensing export with closed records included, then counts what is actually in it.
+  Answers the questions the query builder depends on: how far closure dates reach, how many are parseable,
+  how many counties and ZIPs match the demographic and labor tables. Nothing is saved and no repo file is
+  changed. Put this file in the repo root, next to qa.html, and open it over HTTP.</p>
+
+  <div id="originWarning"></div>
+
+  <div class="panel">
+    <h2>Pick a file</h2>
+    <div class="row">
+      <label for="dataset">Dataset</label>
+      <select id="dataset">
+        <option value="rcfe">Residential care facilities</option>
+        <option value="hco">Home care agencies</option>
+      </select>
+      <input type="file" id="fileInput" accept=".csv,text/csv">
+      <button class="primary" id="runFile">Run on this file</button>
+      <button id="runFetch">Download current file and run</button>
+    </div>
+    <p class="status" id="status">Choose a saved CSV, or download the current one from the state.</p>
+  </div>
+
+  <div id="results"></div>
+
+  <div class="panel" id="reportPanel" style="display:none;">
+    <h2>Plain text report</h2>
+    <p class="note">Copy this back into the conversation so the findings can be read without screenshots.</p>
+    <div class="row" style="margin-bottom:8px;">
+      <button id="copyReport">Copy report</button>
+    </div>
+    <textarea id="report" readonly></textarea>
+  </div>
+
+</div>
+
+<script src="assets/facility-data.js"></script>
+<script src="data/demand.js"></script>
+<script src="data/labor.js"></script>
+<script>
+(function(){
+"use strict";
+
+var statusEl = document.getElementById("status");
+var resultsEl = document.getElementById("results");
+var reportPanel = document.getElementById("reportPanel");
+var reportEl = document.getElementById("report");
+var reportLines = [];
+
+function say(msg, isError){
+  statusEl.textContent = msg;
+  statusEl.className = "status" + (isError ? " err" : "");
+}
+function esc(s){
+  return String(s === undefined || s === null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function n(v){ return (v === null || v === undefined || v === "") ? "" : Number(v).toLocaleString("en-US"); }
+function pct(part, whole){ return whole ? (part / whole * 100).toFixed(1) + "%" : ""; }
+
+/* ---------- report ---------- */
+function rLine(s){ reportLines.push(s === undefined ? "" : s); }
+function rTable(title, rows){
+  rLine(title);
+  rows.forEach(function(r){ rLine("  " + r[0] + ": " + r[1]); });
+  rLine();
+}
+
+/* ---------- rendering ---------- */
+function panel(heading, inner){
+  var d = document.createElement("div");
+  d.className = "panel";
+  d.innerHTML = "<h2>" + esc(heading) + "</h2>" + inner;
+  resultsEl.appendChild(d);
+}
+function pairTable(rows){
+  var html = "<table><tbody>";
+  rows.forEach(function(r){
+    html += "<tr><th>" + esc(r[0]) + '</th><td class="num">' + esc(r[1]) + "</td><td>" + (r[2] ? esc(r[2]) : "") + "</td></tr>";
+  });
+  return html + "</tbody></table>";
+}
+function listTable(headers, rows, scroll){
+  var html = (scroll ? '<div class="scroll">' : "") + "<table><thead><tr>";
+  headers.forEach(function(h, i){ html += "<th" + (i ? ' class="num"' : "") + ">" + esc(h) + "</th>"; });
+  html += "</tr></thead><tbody>";
+  rows.forEach(function(r){
+    html += "<tr>";
+    r.forEach(function(c, i){ html += "<td" + (i ? ' class="num"' : "") + ">" + esc(c) + "</td>"; });
+    html += "</tr>";
+  });
+  html += "</tbody></table>" + (scroll ? "</div>" : "");
+  return html;
+}
+
+/* ---------- date helpers ----------
+   dateValue only accepts M/D/YYYY. Anything else comes back null, which is
+   exactly the case the query builder has to have a defined answer for. */
+function yearOf(s){
+  var v = dateValue(s);
+  if(v === null) return null;
+  return new Date(v).getFullYear();
+}
+
+/* ---------- the checks ---------- */
+function runChecks(text, key, sourceLabel){
+  var cfg = DATASETS[key];
+  reportLines = [];
+  resultsEl.innerHTML = "";
+
+  var parsed;
+  try{
+    // No locate and no addrLookup: coordinates are not needed to count, and
+    // leaving them out keeps this page from touching any cache.
+    parsed = parseFacilityFile(text, cfg, { includeClosed: true });
+  }catch(e){
+    say("The parser threw: " + e.message, true);
+    return;
+  }
+  if(parsed.error){ say(parsed.error, true); return; }
+
+  var recs = parsed.records;
+  rLine("DATA VERIFICATION");
+  rLine("Dataset: " + cfg.label);
+  rLine("Source: " + sourceLabel);
+  rLine("Run at: " + new Date().toString());
+  rLine("Bytes read: " + text.length.toLocaleString("en-US"));
+  rLine();
+
+  loadShape(parsed, recs, cfg);
+  statusBreakdown(recs);
+  dateSection(recs, "closedDate", "Closure dates", "CLOSED");
+  dateSection(recs, "licenseDate", "License dates", null);
+  licenseGap(recs);
+  countyMatch(recs);
+  zipMatch(recs);
+  reliability(recs);
+
+  reportEl.value = reportLines.join("\n");
+  reportPanel.style.display = "";
+  say("Done. " + n(recs.length) + " records read from " + cfg.label.toLowerCase() + ".");
+}
+
+function loadShape(parsed, recs, cfg){
+  var rows = [
+    ["Records returned", n(recs.length), "closed records included"],
+    ["Closed or on probation among them", n(parsed.skippedClosed),
+      "the parser counts these even when it keeps them"],
+    ["Rows dropped, no city", n(parsed.skippedNoCity), "dropped whether open or closed"],
+    ["Rows dropped, unrecognised status", n(parsed.malformed), "shifted columns, values not trustworthy"]
+  ];
+  panel("What loaded", pairTable(rows) +
+    '<p class="note">With closed records kept, the parser\u2019s skippedClosed figure counts them rather than ' +
+    'reporting a number dropped. A load message that says "skipped" would be wrong here.</p>');
+  rTable("WHAT LOADED", rows.map(function(r){ return [r[0], r[1]]; }));
+}
+
+function statusBreakdown(recs){
+  var byStatus = {};
+  recs.forEach(function(r){ byStatus[r.status] = (byStatus[r.status] || 0) + 1; });
+  var keys = Object.keys(byStatus).sort(function(a,b){ return byStatus[b] - byStatus[a]; });
+  var rows = keys.map(function(k){ return [k, n(byStatus[k]), pct(byStatus[k], recs.length)]; });
+  panel("Status", listTable(["Status", "Records", "Share"], rows) +
+    '<p class="note">On probation is an operating facility, not a closed one. The map tools group the two ' +
+    'together; the query builder has no reason to.</p>');
+  rTable("STATUS", rows.map(function(r){ return [r[0], r[1] + " (" + r[2] + ")"]; }));
+}
+
+function dateSection(recs, field, heading, statusFilter){
+  var pool = statusFilter ? recs.filter(function(r){ return r.status === statusFilter; }) : recs;
+  var present = 0, parseable = 0, minY = null, maxY = null;
+  var byYear = {};
+  pool.forEach(function(r){
+    var raw = r[field];
+    if(raw){ present++; }
+    var y = yearOf(raw);
+    if(y === null) return;
+    parseable++;
+    byYear[y] = (byYear[y] || 0) + 1;
+    if(minY === null || y < minY) minY = y;
+    if(maxY === null || y > maxY) maxY = y;
+  });
+
+  var rows = [
+    ["Records in scope", n(pool.length), statusFilter ? "status " + statusFilter : "all statuses"],
+    ["Field has a value", n(present), pct(present, pool.length)],
+    ["Value parses as M/D/YYYY", n(parseable), pct(parseable, pool.length)],
+    ["Neither, so cannot be placed in a period", n(pool.length - parseable), pct(pool.length - parseable, pool.length)],
+    ["Earliest year", minY === null ? "none" : minY, ""],
+    ["Latest year", maxY === null ? "none" : maxY, ""]
+  ];
+
+  var years = Object.keys(byYear).map(Number).sort(function(a,b){ return b - a; });
+  var yearRows = years.map(function(y){ return [String(y), n(byYear[y]), pct(byYear[y], parseable)]; });
+
+  panel(heading, pairTable(rows) +
+    "<h3>By year</h3>" +
+    (yearRows.length ? listTable(["Year", "Records", "Share"], yearRows, yearRows.length > 14)
+                     : '<p class="note">No parseable dates.</p>') +
+    '<p class="note">Where the year counts fall away is where the export stops retaining history. ' +
+    'A measure worded "in the last ten years" is only honest inside that window.</p>');
+
+  rTable(heading.toUpperCase(), rows.map(function(r){
+    return [r[0], r[1] + (r[2] ? " (" + r[2] + ")" : "")];
+  }));
+  rLine(heading.toUpperCase() + " BY YEAR");
+  yearRows.forEach(function(r){ rLine("  " + r[0] + ": " + r[1]); });
+  rLine();
+}
+
+/* Entry measures are built on licenseDate. A missing value is only harmless if
+   it sits on records an entry count would never include. Split the gap by
+   status to find out. */
+function licenseGap(recs){
+  var OPEN = { "LICENSED": true, "PENDING": true, "ON PROBATION": true };
+  var byStatus = {};
+  var openTotal = 0, openMissing = 0;
+
+  recs.forEach(function(r){
+    var s = r.status;
+    if(!byStatus[s]) byStatus[s] = { total: 0, has: 0 };
+    byStatus[s].total++;
+    var ok = yearOf(r.licenseDate) !== null;
+    if(ok) byStatus[s].has++;
+    if(OPEN[s]){ openTotal++; if(!ok) openMissing++; }
+  });
+
+  var keys = Object.keys(byStatus).sort(function(a, b){ return byStatus[b].total - byStatus[a].total; });
+  var rows = keys.map(function(k){
+    var b = byStatus[k];
+    var missing = b.total - b.has;
+    return [k, n(b.total), n(b.has), n(missing), pct(missing, b.total)];
+  });
+
+  // The figure that decides whether entry counts can be trusted.
+  var summaryRows = [
+    ["Operating records", n(openTotal), "licensed, pending and on probation"],
+    ["Operating records with no usable license date", n(openMissing), pct(openMissing, openTotal)],
+    ["Closed records with no usable license date",
+      n((recs.length - openTotal) - (recs.filter(function(r){ return !OPEN[r.status] && yearOf(r.licenseDate) !== null; }).length)),
+      "these never appear in an entry count anyway"]
+  ];
+
+  var verdict;
+  var openShare = openTotal ? (openMissing / openTotal) : 0;
+  if(openShare < 0.01){
+    verdict = '<p class="note ok">The gap barely touches operating records, so entry counts by year are sound.</p>';
+  }else if(openShare < 0.05){
+    verdict = '<p class="note">A small share of operating records carry no license date. Entry counts understate ' +
+      'slightly and every one should print the number of records it could not place.</p>';
+  }else{
+    verdict = '<p class="note flag">Enough operating records carry no license date that entry counts understate ' +
+      'materially. Either the measure states its coverage on the face of the report, or entry by year is not ' +
+      'worth offering.</p>';
+  }
+
+  panel("License date gap, by status",
+    pairTable(summaryRows) +
+    "<h3>Every status</h3>" +
+    listTable(["Status", "Records", "Has a usable date", "Missing", "Missing share"], rows) +
+    verdict +
+    '<p class="note">A value that is present but not M/D/YYYY counts as missing here, the same way the engine ' +
+    'would treat it.</p>');
+
+  rTable("LICENSE DATE GAP", summaryRows.map(function(r){ return [r[0], r[1]]; }));
+  rLine("LICENSE DATE GAP BY STATUS");
+  rows.forEach(function(r){
+    rLine("  " + r[0] + ": " + r[1] + " records, " + r[3] + " missing (" + r[4] + ")");
+  });
+  rLine();
+}
+
+function countyMatch(recs){
+  var counties = {};
+  recs.forEach(function(r){ counties[r.county] = (counties[r.county] || 0) + 1; });
+  var names = Object.keys(counties).sort();
+
+  var haveLabor = (typeof LABOR !== "undefined" && LABOR.crosswalk);
+  var haveDemand = (typeof DEMAND !== "undefined" && DEMAND.county);
+
+  var demandNames = {};
+  if(haveDemand){
+    Object.keys(DEMAND.county).forEach(function(fips){ demandNames[DEMAND.county[fips].n] = fips; });
+  }
+
+  var missLabor = [], missDemand = [];
+  names.forEach(function(nm){
+    if(haveLabor && !LABOR.crosswalk[nm]) missLabor.push([nm, n(counties[nm])]);
+    if(haveDemand && !demandNames[nm]) missDemand.push([nm, n(counties[nm])]);
+  });
+
+  var rows = [
+    ["Distinct county names in the file", n(names.length), ""],
+    ["Counties in the labor crosswalk", haveLabor ? n(Object.keys(LABOR.crosswalk).length) : "labor.js not loaded", ""],
+    ["Counties in the demographic table", haveDemand ? n(Object.keys(DEMAND.county).length) : "demand.js not loaded", ""],
+    ["File names with no labor match", haveLabor ? n(missLabor.length) : "", missLabor.length ? "these lose wage and jobs data" : ""],
+    ["File names with no demographic match", haveDemand ? n(missDemand.length) : "", missDemand.length ? "these lose every ratio measure" : ""]
+  ];
+
+  var html = pairTable(rows);
+  if(missLabor.length) html += "<h3>No labor match</h3>" + listTable(["County as written in the file", "Records"], missLabor);
+  if(missDemand.length) html += "<h3>No demographic match</h3>" + listTable(["County as written in the file", "Records"], missDemand);
+  if(!missLabor.length && !missDemand.length && haveLabor && haveDemand){
+    html += '<p class="note ok">Every county name matches both tables.</p>';
+  }
+  html += '<p class="note">The parser title-cases county names from an all-uppercase source. A mismatch here ' +
+          'is silent: enrichment simply returns nothing for that county.</p>';
+  panel("County names", html);
+
+  rTable("COUNTY NAMES", rows.map(function(r){ return [r[0], r[1]]; }));
+  if(missLabor.length){ rLine("NO LABOR MATCH"); missLabor.forEach(function(r){ rLine("  " + r[0] + " (" + r[1] + " records)"); }); rLine(); }
+  if(missDemand.length){ rLine("NO DEMOGRAPHIC MATCH"); missDemand.forEach(function(r){ rLine("  " + r[0] + " (" + r[1] + " records)"); }); rLine(); }
+}
+
+function zipMatch(recs){
+  var haveDemand = (typeof DEMAND !== "undefined" && DEMAND.zip);
+  if(!haveDemand){ panel("ZIP codes", '<p class="note flag">demand.js did not load, so ZIP matching was not checked.</p>'); return; }
+
+  var blank = 0, malformed = 0, matched = 0, unmatched = 0;
+  var unmatchedZips = {};
+  recs.forEach(function(r){
+    var raw = String(r.zip || "").trim();
+    if(!raw){ blank++; return; }
+    var m = raw.match(/^(\d{5})/);
+    if(!m){ malformed++; return; }
+    if(DEMAND.zip[m[1]]) matched++;
+    else { unmatched++; unmatchedZips[m[1]] = (unmatchedZips[m[1]] || 0) + 1; }
+  });
+
+  var rows = [
+    ["Records with a usable five digit ZIP", n(matched + unmatched), ""],
+    ["ZIP blank", n(blank), pct(blank, recs.length)],
+    ["ZIP present but not five digits", n(malformed), pct(malformed, recs.length)],
+    ["ZIP found in the demographic table", n(matched), pct(matched, recs.length)],
+    ["ZIP not in the demographic table", n(unmatched), pct(unmatched, recs.length)],
+    ["Distinct unmatched ZIPs", n(Object.keys(unmatchedZips).length), ""]
+  ];
+
+  var listed = Object.keys(unmatchedZips)
+    .sort(function(a,b){ return unmatchedZips[b] - unmatchedZips[a]; })
+    .map(function(z){ return [z, n(unmatchedZips[z])]; });
+
+  var html = pairTable(rows);
+  if(listed.length) html += "<h3>ZIPs with no demographic record</h3>" + listTable(["ZIP", "Records"], listed, listed.length > 14);
+  html += '<p class="note">These are usually PO box ZIPs or ZIPs with no census tabulation area. Every record here ' +
+          'has no denominator, so a ZIP level ratio for it must come back blank rather than zero.</p>';
+  panel("ZIP codes", html);
+
+  rTable("ZIP CODES", rows.map(function(r){ return [r[0], r[1]]; }));
+  if(listed.length){
+    rLine("UNMATCHED ZIPS");
+    listed.forEach(function(r){ rLine("  " + r[0] + ": " + r[1] + " records"); });
+    rLine();
+  }
+}
+
+/* How reliable is the denominator behind each record, weighted by records
+   rather than by ZIP. A threshold is only defensible once this is known. */
+function reliability(recs){
+  var haveDemand = (typeof DEMAND !== "undefined" && DEMAND.zip);
+  if(!haveDemand) return;
+
+  var buckets = [
+    { label: "No demographic record for the ZIP", test: function(d){ return !d; } },
+    { label: "Estimate zero or missing", test: function(d){ return d && !d.a65[0]; } },
+    { label: "CV not published", test: function(d){ return d && d.a65[0] && (d.a65[1] === null || d.a65[1] === undefined); } },
+    { label: "CV 10 or under", test: function(d){ return d && d.a65[0] && d.a65[1] <= 10; } },
+    { label: "CV 11 to 20", test: function(d){ return d && d.a65[0] && d.a65[1] > 10 && d.a65[1] <= 20; } },
+    { label: "CV 21 to 30", test: function(d){ return d && d.a65[0] && d.a65[1] > 20 && d.a65[1] <= 30; } },
+    { label: "CV 31 to 50", test: function(d){ return d && d.a65[0] && d.a65[1] > 30 && d.a65[1] <= 50; } },
+    { label: "CV over 50", test: function(d){ return d && d.a65[0] && d.a65[1] > 50; } }
+  ];
+  var counts = buckets.map(function(){ return 0; });
+  var thin = 0;   // fewer than 100 seniors in the ZIP
+
+  recs.forEach(function(r){
+    var m = String(r.zip || "").trim().match(/^(\d{5})/);
+    var d = m ? DEMAND.zip[m[1]] : null;
+    for(var i = 0; i < buckets.length; i++){
+      if(buckets[i].test(d)){ counts[i]++; break; }
+    }
+    if(d && d.a65[0] && d.a65[0] < 100) thin++;
+  });
+
+  var rows = buckets.map(function(b, i){ return [b.label, n(counts[i]), pct(counts[i], recs.length)]; });
+  rows.push(["ZIP holds fewer than 100 residents 65 and over", n(thin), pct(thin, recs.length)]);
+
+  panel("Denominator reliability, by record",
+    listTable(["Bucket", "Records", "Share"], rows) +
+    '<p class="note">Counted by record, not by ZIP, because that is what a report actually shows. ' +
+    'The numerator is a hard count from the licensing roster, so all of the uncertainty in a ratio sits here. ' +
+    'A ranked list puts the worst estimates at the top by construction, which is the argument for a default threshold.</p>');
+
+  rTable("DENOMINATOR RELIABILITY BY RECORD", rows.map(function(r){ return [r[0], r[1] + " (" + r[2] + ")"]; }));
+}
+
+/* ---------- entry points ---------- */
+function currentKey(){ return document.getElementById("dataset").value; }
+function busy(on){
+  ["runFile","runFetch"].forEach(function(id){ document.getElementById(id).disabled = on; });
+}
+
+document.getElementById("runFile").addEventListener("click", function(){
+  var input = document.getElementById("fileInput");
+  var file = input.files && input.files[0];
+  if(!file){ say("Choose a CSV first.", true); return; }
+  busy(true);
+  say("Reading " + file.name + "...");
+  var reader = new FileReader();
+  reader.onload = function(){
+    try{ runChecks(String(reader.result), currentKey(), file.name); }
+    catch(e){ say("Something went wrong: " + e.message, true); }
+    busy(false);
+  };
+  reader.onerror = function(){ say("The file could not be read.", true); busy(false); };
+  reader.readAsText(file);
+});
+
+document.getElementById("runFetch").addEventListener("click", function(){
+  var key = currentKey();
+  var cfg = DATASETS[key];
+  busy(true);
+  say("Downloading the current " + cfg.label.toLowerCase() + " file. This can take a minute.");
+  fetchCcld(cfg.ccldId).then(function(text){
+    try{ runChecks(text, key, "downloaded from the CCLD Transparency Website"); }
+    catch(e){ say("Something went wrong: " + e.message, true); }
+    busy(false);
+  }, function(err){
+    say("The download failed: " + err.message + ". Choose a saved CSV instead.", true);
+    busy(false);
+  });
+});
+
+document.getElementById("copyReport").addEventListener("click", function(){
+  reportEl.select();
+  try{ document.execCommand("copy"); say("Report copied."); }
+  catch(e){ say("Select the report text and copy it."); }
+});
+
+/* Same trap qa.html warns about: opened from disk, the script tags above
+   resolve but a fetch will not, and the paths may not resolve either. */
+if(location.protocol === "file:"){
+  document.getElementById("originWarning").innerHTML =
+    '<div class="panel"><p class="flag" style="margin:0;">This page is open from disk. ' +
+    'Serve the repo folder over HTTP and open it from there, or the downloads and some paths will fail.</p></div>';
+}
+
+if(typeof parseFacilityFile !== "function"){
+  say("assets/facility-data.js did not load. This file belongs in the repo root, next to qa.html.", true);
+}else if(typeof DEMAND === "undefined" || typeof LABOR === "undefined"){
+  say("The parser loaded but data/demand.js or data/labor.js did not. County and ZIP matching will be skipped.", true);
+}
+})();
+</script>
+</body>
+</html>
